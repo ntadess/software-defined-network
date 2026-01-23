@@ -10,6 +10,7 @@ import sys
 from datetime import date, datetime
 import socket
 from collections import defaultdict
+import heapq
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "Controller.log"
@@ -152,7 +153,7 @@ def dijkstras(graph, src: int, num):
     while heap:
         distance, u = heapq.heappop(heap)
 
-        if distance >= dist[u]:
+        if distance > dist[u]: # get rid of = just >?
             continue # already found better
 
         for v, cost in graph[u]:
@@ -160,11 +161,32 @@ def dijkstras(graph, src: int, num):
             if distance + cost < dist[v]:
                 dist[v] = distance + cost
                 heapq.heappush(heap, (distance + cost, v))
+                prev[v] = u 
 
-
+    #need to make a routing table from src to each node i think
     
 
-    
+    #idrk lets get back to this later idrk
+    next_hop = {}
+
+    for i in range(num):
+
+        if i == src:
+            next_hop[i] = src
+
+        elif dist[i] == infin:
+            next_hop[i] = -1
+        
+        else:
+            curr = i
+            # while prev[curr] != src:
+            while prev[curr] is not None and prev[curr] != src: # make sure that it not none just inc ase
+                curr = prev[curr]
+            next_hop[i] = curr
+
+    return dist, next_hop
+
+
 def main():
     #Check for number of arguments and exit if host/port not provided
     num_args = len(sys.argv)
@@ -207,6 +229,17 @@ def main():
    
     # print(num_switches)
     #print(neighbors)
+    switch_routes = {}
+    routing_table = []
+    for src in range(num_switches):
+        dist, next_hop = dijkstras(graph, src, num_switches)
+
+        switch_routes[src] = (dist, next_hop)
+
+        # <Switch ID>,<Dest ID>:<Next Hop>,<Shortest distance>
+        for dest in range(num_switches):
+            routing_table.append([src, dest, next_hop[dest], dist[dest]])
+
 
     bufsize = 1024
     switch_addr = {}
