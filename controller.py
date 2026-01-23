@@ -148,13 +148,18 @@ def dijkstras(graph, src: int, num):
 
 
     # algos heappop logn E * logV time complex
+    # main part of dijkstas
     while heap:
-        distance, node = heapq.heappop(heap)
+        distance, u = heapq.heappop(heap)
 
-        if distance >= dist[node]:
+        if distance >= dist[u]:
             continue # already found better
 
-        if distance + dist[]
+        for v, cost in graph[u]:
+            # u makes a shorter path to v then update v 
+            if distance + cost < dist[v]:
+                dist[v] = distance + cost
+                heapq.heappush(heap, (distance + cost, v))
 
 
     
