@@ -180,7 +180,7 @@ def dijkstras(graph, src: int, num):
         else:
             curr = i
             # while prev[curr] != src:
-            while prev[curr] is not None and prev[curr] != src: # make sure that it not none just inc ase
+            while curr in prev and prev[curr] is not None and prev[curr] != src: # make sure that it not none just inc ase
                 curr = prev[curr]
             next_hop[i] = curr
 
@@ -241,7 +241,7 @@ def main():
             routing_table.append([src, dest, next_hop[dest], dist[dest]])
 
 
-    bufsize = 1024
+    bufsize = 8192
     switch_addr = {}
     #response = "Register_Response"
     done = False
@@ -258,11 +258,11 @@ def main():
             if token == "Register_Request":
                 register_request_received(switch_id)
                 switch_addr[switch_id] = address
-                if not done and len(switch_addr) == num_switches:
+                if not done and len(switch_addr) == num_switches:# dont proceed until all registered                    
                     for s_id, addr in switch_addr.items():
                         tmp = []
                         tmp.append(str(len(neighbors[s_id])))
-
+                        #routing_table_update(routing_table)
                         for nei in neighbors[s_id]:
                             nei_ip, nei_port = switch_addr[nei]
                             tmp.append(f"{nei} {nei_ip} {nei_port}")
@@ -270,6 +270,19 @@ def main():
                         payload = "\n".join(tmp)
                         sock.sendto(payload.encode("utf-8"), addr)
                         register_response_sent(s_id)
+                    routing_table_update(routing_table)
+
+                    for src in range(num_switches): # ok so for ecah switch as the src i need to find enxt_hop and dist for each dest
+                        dist, next_hop = switch_routes[src]
+                        resp = []
+                        resp.append(str(src))
+                        for dest in range(num_switches): # no point in checking if src == dest
+                            resp.append(f"{dest} {next_hop[dest]}")
+
+                        payload = "\n".join(resp)
+                        sock.sendto(payload.encode('utf-8'), switch_addr[src])
+                        
+                        
                     done = True
 
 

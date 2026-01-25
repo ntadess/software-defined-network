@@ -110,7 +110,7 @@ def main():
     msg = f"{my_id} Register_Request"
     sock.sendto(msg.encode("utf-8"), (controller_hostname, controller_port))
     register_request_sent()
-    bufsize = 1024
+    bufsize = 8192
     message, address = sock.recvfrom(bufsize)
     payload = message.decode('utf-8').strip()
 
@@ -127,7 +127,7 @@ def main():
         nei_port = int(nei_port)
         nei_to_addr[nei_id] = (nei_ip, nei_port)
 
-    while True:
+    while True: # infin loop
         message, address = sock.recvfrom(bufsize)
 
 
