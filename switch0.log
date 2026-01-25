@@ -50,3 +50,19 @@ Register Request Sent
 
 11:51:29.704852
 Register Response received
+
+
+18:51:37.165497
+Register Request Sent
+
+
+18:52:02.770805
+Register Response received
+
+
+18:52:02.814207
+Routing Update
+0,0:0
+0,1:1
+0,2:2
+Routing Complete

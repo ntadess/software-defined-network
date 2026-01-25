@@ -110,7 +110,7 @@ def main():
     msg = f"{my_id} Register_Request"
     sock.sendto(msg.encode("utf-8"), (controller_hostname, controller_port))
     register_request_sent()
-    bufsize = 8192
+    bufsize = 8192 # maube 1024 too small ta said make it big 
     message, address = sock.recvfrom(bufsize)
     payload = message.decode('utf-8').strip()
 
@@ -129,6 +129,33 @@ def main():
 
     while True: # infin loop
         message, address = sock.recvfrom(bufsize)
+
+        #decode payload get the rotuing table
+
+        #list of lists in the form of [[...], [...], ...]. 
+        # Within each list in the outermost list, the first element is <Switch ID>. The second is <Dest ID>, and the third is <Next Hop>.
+        payload = message.decode('utf-8').strip()
+        tmp = payload.splitlines()
+
+        ''' 
+        format is 
+        switch_id
+        dest next_hop
+
+
+        '''
+        #print(tmp)
+        s_id = int(tmp[0])
+        routing_table = [] # log it in given format
+
+        # do i need a s_id == current_id check??
+        for line in tmp[1:]:
+            dest, next_hop = line.split()
+            dest = int(dest)
+            next_hop = int(next_hop)
+            routing_table.append([s_id, dest, next_hop])
+        
+        routing_table_update(routing_table)
 
 
 

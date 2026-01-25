@@ -6,3 +6,19 @@ Register Request Sent
 
 11:51:29.722379
 Register Response received
+
+
+18:51:48.276604
+Register Request Sent
+
+
+18:52:02.785536
+Register Response received
+
+
+18:52:02.814207
+Routing Update
+1,0:0
+1,1:1
+1,2:2
+Routing Complete
