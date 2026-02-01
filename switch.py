@@ -9,6 +9,7 @@ Last Modified Date: December 9th, 2021
 import sys
 from datetime import date, datetime
 import socket
+import time
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "switch#.log" # The log file for switches are switch#.log, where # is the id of that switch (i.e. switch0.log, switch1.log). The code for replacing # with a real number has been given to you in the main function.
@@ -89,8 +90,13 @@ def write_to_log(log):
         log_file.writelines(log)
 
 def main():
+    K = 2 # Keep-Alive in seconds
+    TIMEOUT = 3 * K
 
     global LOG_FILE
+
+
+    
 
     #Check for number of arguments and exit if host/port not provided
     num_args = len(sys.argv)
@@ -120,14 +126,26 @@ def main():
     num = int(tmp[0])
     
     nei_to_addr = {}
+    nei_alive = {}
+    nei_heard = {}
 
     for line in tmp[1:1 + num]:
         nei_id, nei_ip, nei_port = line.split()
         nei_id = int(nei_id)
         nei_port = int(nei_port)
         nei_to_addr[nei_id] = (nei_ip, nei_port)
+        nei_alive[nei_id] = True
+        nei_heard[nei_id] = current_time = time.monotonic()
+
+    
 
     while True: # infin loop
+
+        # TWO TYPES OF MESSAGES
+        # KEEP ALIVE AND TOPLOGY UPDATE
+        # must support the -f <neighbor_ID> flag to simulate a neighbor failure
+        # python switch.py <id> <controller_host> <controller_port> -f <neighbor-id>
+
         message, address = sock.recvfrom(bufsize)
 
         #decode payload get the rotuing table
@@ -156,6 +174,15 @@ def main():
             routing_table.append([s_id, dest, next_hop])
         
         routing_table_update(routing_table)
+
+
+
+        # part 2 need to use keep alive
+        '''
+        <switch-ID> KEEP_ALIVE
+        E.g. Switch (ID = 3) sends the following KEEP_ALIVE to all of its neighboring switches:
+        3 KEEP_ALIVE
+        '''
 
 
 
