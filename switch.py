@@ -90,14 +90,20 @@ def write_to_log(log):
         # Write to log
         log_file.writelines(log)
 
+def topology_update(my_id, nei_to_addr, nei_alive):
+    lines = [str(my_id)]
+    for n_id in nei_to_addr:
+        status = "True" if nei_alive[n_id] else "False"
+        lines.append(f"{n_id} {status}")
+    msg = "\n".join(lines) + "\n"
+    msg = msg.encode("utf-8")
+    return msg 
+
 def main():
     K = 2 # Keep-Alive in seconds
     TIMEOUT = 3 * K
 
     global LOG_FILE
-
-
-    
 
     #Check for number of arguments and exit if host/port not provided
     num_args = len(sys.argv)
@@ -120,36 +126,79 @@ def main():
     controller_port = int(sys.argv[3])
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
+    bufsize = 8192
     msg = f"{my_id} Register_Request"
     sock.sendto(msg.encode("utf-8"), (controller_hostname, controller_port))
     register_request_sent()
-    bufsize = 8192 # maube 1024 too small ta said make it big 
-    message, address = sock.recvfrom(bufsize)
-    payload = message.decode('utf-8').strip()
 
-    register_response_received()
+##############
+    while True:
+        message, address = sock.recvfrom(bufsize)
+        payload = message.decode('utf-8').strip()
 
-    tmp = payload.strip().splitlines()
-    num = int(tmp[0])
+        if address != (controller_hostname, controller_port):
+            continue
+
+        lines = payload.splitlines()
+
+        if not lines:
+            continue
+
+        try:
+            num = int(lines[0])
+        except ValueError:
+            continue
+
+        # must contain exactly num neighbor lines (or at least that many)
+        if len(lines) < 1 + num:
+            continue
+
+        # validate each neighbor line: "<nei_id> <ip> <port>"
+        parsed_neighbors = []
+        ok = True
+        for line in lines[1:1 + num]:
+            parts = line.split()
+            if len(parts) != 3:
+                ok = False
+                break
+            try:
+                nei_id = int(parts[0])
+                nei_ip = parts[1]
+                nei_port = int(parts[2])
+            except ValueError:
+                ok = False
+                break
+            parsed_neighbors.append((nei_id, nei_ip, nei_port))
+
+        if not ok:
+            continue
+
+        # got it
+        register_response_received()
+        break
+
+
+    #############
+
+
+
     
     nei_to_addr = {}
     nei_alive = {}
     nei_heard = {}
 
-    for line in tmp[1:1 + num]:
-        nei_id, nei_ip, nei_port = line.split()
-        nei_id = int(nei_id)
-        nei_port = int(nei_port)
+    time_now = time.monotonic()
+    for (nei_id, nei_ip, nei_port) in parsed_neighbors:
         nei_to_addr[nei_id] = (nei_ip, nei_port)
         nei_alive[nei_id] = True
-        nei_heard[nei_id] = time.monotonic()
+        nei_heard[nei_id] = time_now
 
     if failed_neighbor_id is not None and failed_neighbor_id in nei_alive:
         nei_alive[failed_neighbor_id] = False
         #nei_heard[failed_neighbor_id] = -1  # will never be updated
     
     lock = threading.Lock()
+
     def recv_loop(): # locks needed around nei_alive and nei_heard
         while True:
 
@@ -171,23 +220,36 @@ def main():
                 #format is like <switch-ID> KEEP_ALIVE acordingto the thing
                 send_id = int(detect[0])
 
+                if send_id not in nei_alive:
+                    # not my neighbor ignore
+                    continue
+
                 if failed_neighbor_id is not None and send_id == failed_neighbor_id:
                     # ignore it cuz thats the one link we are told failed or
                     continue
 
                 now = time.monotonic()
+                log_alive = False
+                top_message = None
 
-                lock.acquire()
-                if send_id in nei_alive and not nei_alive[send_id]: # dead to alive 
-                    # "Unresponsive/Dead Neighbor comes back online" Format is below:
-                    
-                    nei_alive[send_id] = True
-                    
-                    neighbor_alive(send_id) # log it
+                with lock:
+                    if not nei_alive[send_id]: # dead to alive 
+                        # "Unresponsive/Dead Neighbor comes back online" Format is below:
+    
+                        nei_alive[send_id] = True
+                        log_alive = True
+                        top_message = topology_update(my_id, nei_to_addr, nei_alive)
+                        # need to send topology update to controller
 
+        
+                    nei_heard[send_id] = now
+
+                if log_alive:
+                    neighbor_alive(send_id)
                 
-                nei_heard[send_id] = now
-                lock.release()
+                if top_message is not None:
+                    sock.sendto(top_message, (controller_hostname, controller_port))
+                
 
                 continue
                     
@@ -217,32 +279,56 @@ def main():
             
             routing_table_update(routing_table)
 
-
-
         
-
-
     def timer_loop():
         while True: # timer loop 
             now = time.monotonic()
+            send_ids = []
+            dead_logs = []
+            top_message = None
 
-            for nei_id in nei_to_addr: # locks needed around nei_to_addr? nvm no i dont its read only
-                lock.acquire()
-                if nei_alive[nei_id] and now - nei_heard[nei_id] > TIMEOUT:
-                    # neighbor dead
-                    nei_alive[nei_id] = False # i need locks around nei_alive and nei_heard
-                    
-                    neighbor_dead(nei_id) # log it
+            with lock:
+                for nei_id in nei_to_addr: # locks needed around nei_to_addr? nvm no i dont its read only
+                    if failed_neighbor_id is not None and nei_id == failed_neighbor_id:
+                        continue
 
-                if nei_alive[nei_id]:
-                    # send keep alive
-                    msg = f"{my_id} KEEP_ALIVE"
-                    sock.sendto(msg.encode("utf-8"), nei_to_addr[nei_id])
-                lock.release()
+                    if nei_alive[nei_id] and now - nei_heard[nei_id] > TIMEOUT:
+                        # neighbor dead
+                        nei_alive[nei_id] = False # i need locks around nei_alive and nei_heard
+                        dead_logs.append(nei_id)
+
+                        
+                        # i shoudlnt send the update in the lock 
+                        #sock.sendto(msg.encode("utf-8"), (controller_hostname, controller_port))
+
+
+                        
+                    if nei_alive[nei_id]:
+                        # send keep alive
+                        send_ids.append(nei_id)
+
+                
+                top_message = topology_update(my_id, nei_to_addr, nei_alive)
+                        
+            for nei_id in dead_logs:
+                neighbor_dead(nei_id)
+
+            if top_message is not None:
+                sock.sendto(top_message, (controller_hostname, controller_port))
+
+
+             # send keep alives
+            
+            k_alive_msg = f"{my_id} KEEP_ALIVE".encode("utf-8")
+
+            for nei_id in send_ids:
+                sock.sendto(k_alive_msg, nei_to_addr[nei_id]) 
+               
             time.sleep(K)
 
     t_recv = threading.Thread(target=recv_loop, daemon=True)
     t_timer = threading.Thread(target=timer_loop, daemon=True)
+
     t_recv.start()
     t_timer.start()
 
@@ -251,10 +337,6 @@ def main():
         time.sleep(60)
 
     
-
-
-
-
 
 
 if __name__ == "__main__":

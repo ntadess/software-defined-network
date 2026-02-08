@@ -1,90 +1,30 @@
 
 
-21:53:58.670803
+15:01:45.083666
 Register Request 0
 
 
-21:53:58.670803
-Register Response 0
-
-
-21:55:00.512279
-Register Request 0
-
-
-21:55:00.518930
-Register Response 0
-
-
-21:57:38.627485
-Register Request 0
-
-
-21:57:38.637116
-Register Response 0
-
-
-21:59:37.317097
-Register Request 0
-
-
-21:59:37.320090
-Register Response 0
-
-
-22:35:23.290768
-Register Request 0
-
-
-22:35:23.291774
-Register Response 0
-
-
-11:00:57.719303
-Register Request 0
-
-
-11:51:10.479954
-Register Request 0
-
-
-11:51:29.704852
+15:01:52.838797
 Register Request 1
 
 
-11:51:29.704852
-Register Response 0
-
-
-11:51:29.722379
-Register Response 1
-
-
-18:51:37.165497
-Register Request 0
-
-
-18:51:48.276604
-Register Request 1
-
-
-18:52:02.756470
+15:02:02.873352
 Register Request 2
 
 
-18:52:02.770805
+15:02:02.895338
 Register Response 0
 
 
-18:52:02.785536
+15:02:02.905616
 Register Response 1
 
 
-18:52:02.788922
+15:02:02.921318
 Register Response 2
 
 
-18:52:02.807997
+15:02:02.931467
 Routing Update
 0,0:0,0
 0,1:1,20

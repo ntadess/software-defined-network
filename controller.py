@@ -7,7 +7,7 @@ Last Modified Date: December 9th, 2021
 """
 
 import sys
-from datetime import date, datetime
+from datetime import datetime, time
 import socket
 from collections import defaultdict
 import heapq
@@ -208,6 +208,7 @@ def main():
     config_path = sys.argv[2]
     neighbors = defaultdict(list)
     graph = defaultdict(list)
+    link_alive = defaultdict(list) # for topology updates: check if a link is good from both sides 
     with open(config_path, 'r') as file:
         num_switches = int(file.readline().strip())
 
@@ -231,6 +232,7 @@ def main():
     #print(neighbors)
     switch_routes = {}
     routing_table = []
+    reported_neighbors = defaultdict(dict) # for topology updates
     for src in range(num_switches):
         dist, next_hop = dijkstras(graph, src, num_switches)
 
@@ -243,6 +245,7 @@ def main():
 
     bufsize = 8192
     switch_addr = {}
+    last_heard = {}
     #response = "Register_Response"
     done = False
 
@@ -251,39 +254,91 @@ def main():
         msg_str = message.decode('utf-8').strip() # add a strip to get rid of any \n or similar things
         full = msg_str.split()
 
-        if len(full) >= 2:
+        if len(full) >= 2 and full[1] == "Register_Request":
             switch_id = int(full[0])
-            token = full[1]
 
-            if token == "Register_Request":
-                register_request_received(switch_id)
-                switch_addr[switch_id] = address
-                if not done and len(switch_addr) == num_switches:# dont proceed until all registered                    
-                    for s_id, addr in switch_addr.items():
-                        tmp = []
-                        tmp.append(str(len(neighbors[s_id])))
-                        #routing_table_update(routing_table)
-                        for nei in neighbors[s_id]:
-                            nei_ip, nei_port = switch_addr[nei]
-                            tmp.append(f"{nei} {nei_ip} {nei_port}")
-                        
-                        payload = "\n".join(tmp)
-                        sock.sendto(payload.encode("utf-8"), addr)
-                        register_response_sent(s_id)
-                    routing_table_update(routing_table)
+            register_request_received(switch_id)
+            switch_addr[switch_id] = address
+            last_heard[switch_id] = time.monotonic()
+        
 
-                    for src in range(num_switches): # ok so for ecah switch as the src i need to find enxt_hop and dist for each dest
-                        dist, next_hop = switch_routes[src]
-                        resp = []
-                        resp.append(str(src))
-                        for dest in range(num_switches): # no point in checking if src == dest
-                            resp.append(f"{dest} {next_hop[dest]}")
+            if not done and len(switch_addr) == num_switches:# dont proceed until all registered                    
+                for s_id, addr in switch_addr.items():
+                    tmp = []
+                    tmp.append(str(len(neighbors[s_id])))
+                    #routing_table_update(routing_table)
+                    for nei in neighbors[s_id]:
+                        nei_ip, nei_port = switch_addr[nei]
+                        tmp.append(f"{nei} {nei_ip} {nei_port}")
+                    
+                    payload = "\n".join(tmp)
+                    sock.sendto(payload.encode("utf-8"), addr)
+                    register_response_sent(s_id)
+                routing_table_update(routing_table)
 
-                        payload = "\n".join(resp)
-                        sock.sendto(payload.encode('utf-8'), switch_addr[src])
-                        
-                        
-                    done = True
+                for src in range(num_switches): # ok so for ecah switch as the src i need to find enxt_hop and dist for each dest
+                    dist, next_hop = switch_routes[src]
+                    resp = []
+                    resp.append(str(src))
+                    for dest in range(num_switches): # no point in checking if src == dest
+                        resp.append(f"{dest} {next_hop[dest]}")
+
+                    payload = "\n".join(resp)
+                    sock.sendto(payload.encode('utf-8'), switch_addr[src])
+                    
+                    
+                done = True
+                continue
+
+            continue
+
+        # topology_update 
+        
+        '''
+        <switch_id>
+        <neighbor_id> TRUE/FALSE
+        '''
+        lines = msg_str.splitlines()
+
+        if len(lines) >= 2:
+            switch_id = int(lines[0])
+            last_heard[switch_id] = time.monotonic()
+            for line in lines[1:]:
+                parts = line.split()
+                if len(parts) == 2:
+                    neighbor_id = int(parts[0])
+                    status = parts[1]
+
+                    if status == "True":
+                        alive = True
+                    elif status == "False":
+                        alive = False
+                else:
+                    continue
+                
+
+                # this part im not sure on double check this a lot of alives and deafult dict stuff here
+                reported_neighbors[switch_id][neighbor_id] = alive
+                smaller, bigger = min(switch_id, neighbor_id), max(switch_id, neighbor_id)
+                old_alive = link_alive.get((smaller, bigger), True) # default to true 
+                other_alive = reported_neighbors[neighbor_id].get(switch_id, True) # default to true if we havent heard from the other side yet
+    
+                new_alive = alive and other_alive
+            
+                if old_alive and not new_alive:
+                    topology_update_link_dead(smaller, bigger)
+
+                link_alive[(smaller, bigger)] = new_alive # prolly use link alive to build a better graph for dijkstras and then update the routing table and send it to the switches when a link goes down or up
+
+            continue
+
+
+            
+
+
+            
+
+
 
 
 

@@ -1,24 +1,20 @@
 
 
-11:51:29.704852
+15:01:52.838797
 Register Request Sent
 
 
-11:51:29.722379
+15:02:02.905616
 Register Response received
 
 
-18:51:48.276604
-Register Request Sent
-
-
-18:52:02.785536
-Register Response received
-
-
-18:52:02.814207
+15:02:02.945675
 Routing Update
 1,0:0
 1,1:1
 1,2:2
 Routing Complete
+
+
+15:18:14.430638
+Neighbor Dead 2

@@ -1,16 +1,24 @@
 
 
-18:52:02.756470
+15:02:02.873352
 Register Request Sent
 
 
-18:52:02.788922
+15:02:02.921318
 Register Response received
 
 
-18:52:02.814207
+15:02:02.945675
 Routing Update
 2,0:0
 2,1:1
 2,2:2
 Routing Complete
+
+
+15:18:14.430638
+Neighbor Dead 0
+
+
+15:18:14.431654
+Neighbor Dead 1
