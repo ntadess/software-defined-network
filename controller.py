@@ -7,10 +7,11 @@ Last Modified Date: December 9th, 2021
 """
 
 import sys
-from datetime import datetime, time
+from datetime import datetime
 import socket
 from collections import defaultdict
 import heapq
+import time
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "Controller.log"
@@ -187,7 +188,53 @@ def dijkstras(graph, src: int, num):
     return dist, next_hop
 
 
+def make_new_graph(og_cost, link_alive):
+    g = defaultdict(list)
+    for (a, b), cost in og_cost.items():
+        if link_alive.get((a, b), True): 
+            g[a].append((b, cost))
+            g[b].append((a, cost))
+
+    return g
+
+def push_routes(sock, switch_addr, graph, num_switches, dead_switches):
+    routing_table = []
+    per_switch_routes = {}
+
+    for src in range(num_switches):
+        if src in dead_switches:
+            continue
+
+        dist, next_hop = dijkstras(graph, src, num_switches)
+        per_switch_routes[src] = (dist, next_hop)
+
+        # <Switch ID>,<Dest ID>:<Next Hop>,<Shortest distance>
+        for dest in range(num_switches):
+            routing_table.append([src, dest, next_hop[dest], dist[dest]])
+
+    routing_table_update(routing_table)
+
+    for src in range(num_switches):
+        if src not in switch_addr:
+            continue
+        if src in dead_switches:
+            continue
+
+
+        dist, next_hop = per_switch_routes[src]
+        resp = []
+        resp.append(str(src))
+        for dest in range(num_switches):
+            resp.append(f"{dest} {next_hop[dest]}")
+
+        payload = "\n".join(resp)
+        sock.sendto(payload.encode('utf-8'), switch_addr[src])
+
 def main():
+    K = 2
+    TIMEOUT = 3 * K
+    dead_switches = set()
+
     #Check for number of arguments and exit if host/port not provided
     num_args = len(sys.argv)
     if num_args < 3:
@@ -204,11 +251,13 @@ def main():
     port = int(sys.argv[1])
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((ip, port))
+    sock.settimeout(0.5)
 
     config_path = sys.argv[2]
     neighbors = defaultdict(list)
     graph = defaultdict(list)
-    link_alive = defaultdict(list) # for topology updates: check if a link is good from both sides 
+    link_alive = {} # for topology updates: check if a link is good from both sides 
+    og_cost = {}
     with open(config_path, 'r') as file:
         num_switches = int(file.readline().strip())
 
@@ -227,6 +276,9 @@ def main():
 
             graph[a].append((b, cost))
             graph[b].append((a, cost))
+            og_cost[(min(a, b), max(a, b))] = cost
+            link_alive[(min(a, b), max(a, b))] = True
+
    
     # print(num_switches)
     #print(neighbors)
@@ -250,12 +302,57 @@ def main():
     done = False
 
     while True:
-        message, address = sock.recvfrom(bufsize)
-        msg_str = message.decode('utf-8').strip() # add a strip to get rid of any \n or similar things
+
+        # try except for the timeout to check for dead switches
+
+        try: # gets messsagse
+            message, address = sock.recvfrom(bufsize)
+            msg_str = message.decode('utf-8').strip()
+            #print(msg_str)
+        except socket.timeout: # no message received in timeout 
+            # chek for dead switches
+            current_time = time.monotonic()
+            topology_changed = False
+
+            for switch_id, last_heard_time in list(last_heard.items()):
+                if current_time - last_heard_time > TIMEOUT:
+                    if switch_id not in dead_switches:
+
+                        dead_switches.add(switch_id)
+                        topology_update_switch_dead(switch_id)
+                        topology_changed = True
+
+                        # get rid of all links from this switch
+                        for nei in neighbors[switch_id]:
+                            smaller, bigger = min(switch_id, nei), max(switch_id, nei)
+                            
+                            if link_alive.get((smaller, bigger), True):
+                                topology_update_link_dead(smaller, bigger)
+                                link_alive[(smaller, bigger)] = False
+                            
+                    del last_heard[switch_id]
+                    if switch_id in switch_addr:
+                        del switch_addr[switch_id]
+
+            if topology_changed and done:
+                new_graph = make_new_graph(og_cost, link_alive)
+                push_routes(sock, switch_addr, new_graph, num_switches, dead_switches)    
+            continue
+
+        #msg_str = message.decode('utf-8').strip() # add a strip to get rid of any \n or similar things
         full = msg_str.split()
 
         if len(full) >= 2 and full[1] == "Register_Request":
             switch_id = int(full[0])
+
+            if switch_id in dead_switches:
+                dead_switches.remove(switch_id)
+                topology_update_switch_alive(switch_id)
+
+                for nei in neighbors[switch_id]:
+                    smaller, bigger = min(switch_id, nei), max(switch_id, nei)
+                    link_alive[(smaller, bigger)] = True
+                    
 
             register_request_received(switch_id)
             switch_addr[switch_id] = address
@@ -290,6 +387,11 @@ def main():
                 done = True
                 continue
 
+            if done: 
+                new_graph = make_new_graph(og_cost, link_alive)
+                push_routes(sock, switch_addr, new_graph, num_switches, dead_switches)
+
+
             continue
 
         # topology_update 
@@ -300,35 +402,55 @@ def main():
         '''
         lines = msg_str.splitlines()
 
+        
+
         if len(lines) >= 2:
             switch_id = int(lines[0])
+            if switch_id in dead_switches:
+                continue
             last_heard[switch_id] = time.monotonic()
+
+            topology_changed = False
             for line in lines[1:]:
                 parts = line.split()
                 if len(parts) == 2:
                     neighbor_id = int(parts[0])
-                    status = parts[1]
+                    status = parts[1].upper()
 
-                    if status == "True":
+                    if status == "TRUE":
                         alive = True
-                    elif status == "False":
+                    elif status == "FALSE":
                         alive = False
+                    else:
+                        continue
                 else:
                     continue
                 
 
                 # this part im not sure on double check this a lot of alives and deafult dict stuff here
+                
                 reported_neighbors[switch_id][neighbor_id] = alive
                 smaller, bigger = min(switch_id, neighbor_id), max(switch_id, neighbor_id)
+                
+                if (smaller, bigger) not in og_cost:
+                    continue 
+                
                 old_alive = link_alive.get((smaller, bigger), True) # default to true 
                 other_alive = reported_neighbors[neighbor_id].get(switch_id, True) # default to true if we havent heard from the other side yet
     
                 new_alive = alive and other_alive
-            
+
+                if old_alive != new_alive:
+                    topology_changed = True
+                    
                 if old_alive and not new_alive:
                     topology_update_link_dead(smaller, bigger)
 
                 link_alive[(smaller, bigger)] = new_alive # prolly use link alive to build a better graph for dijkstras and then update the routing table and send it to the switches when a link goes down or up
+
+            if topology_changed and done:
+                new_graph = make_new_graph(og_cost, link_alive)
+                push_routes(sock, switch_addr, new_graph, num_switches, dead_switches)
 
             continue
 
@@ -336,17 +458,6 @@ def main():
             
 
 
-            
-
-
-
-
-
-
-
-
-
-    
 
 if __name__ == "__main__":
     main()
