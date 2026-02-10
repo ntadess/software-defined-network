@@ -191,7 +191,7 @@ def dijkstras(graph, src: int, num):
 def make_new_graph(og_cost, link_alive):
     g = defaultdict(list)
     for (a, b), cost in og_cost.items():
-        if link_alive.get((a, b), True): 
+        if link_alive.get((a, b), False): 
             g[a].append((b, cost))
             g[b].append((a, cost))
 
@@ -319,6 +319,9 @@ def main():
                     if switch_id not in dead_switches:
 
                         dead_switches.add(switch_id)
+                        reported_neighbors[switch_id] = {} # clear reports from this switch
+                        for nei in neighbors[switch_id]:
+                            reported_neighbors[nei].pop(switch_id, None) # remove neibgor reports
                         topology_update_switch_dead(switch_id)
                         topology_changed = True
 
@@ -326,7 +329,7 @@ def main():
                         for nei in neighbors[switch_id]:
                             smaller, bigger = min(switch_id, nei), max(switch_id, nei)
                             
-                            if link_alive.get((smaller, bigger), True):
+                            if link_alive.get((smaller, bigger), False):
                                 topology_update_link_dead(smaller, bigger)
                                 link_alive[(smaller, bigger)] = False
                             
@@ -349,9 +352,13 @@ def main():
                 dead_switches.remove(switch_id)
                 topology_update_switch_alive(switch_id)
 
+                # clear reported neighbrs
+                reported_neighbors[switch_id] = {}
+
                 for nei in neighbors[switch_id]:
-                    smaller, bigger = min(switch_id, nei), max(switch_id, nei)
-                    link_alive[(smaller, bigger)] = True
+                    reported_neighbors[nei].pop(switch_id, None) # remove neibgor reports
+
+                
                     
 
             register_request_received(switch_id)
@@ -435,8 +442,8 @@ def main():
                 if (smaller, bigger) not in og_cost:
                     continue 
                 
-                old_alive = link_alive.get((smaller, bigger), True) # default to true 
-                other_alive = reported_neighbors[neighbor_id].get(switch_id, True) # default to true if we havent heard from the other side yet
+                old_alive = link_alive.get((smaller, bigger), False) # default to flse 
+                other_alive = reported_neighbors[neighbor_id].get(switch_id, old_alive) # default to false if we havent heard from the other side yet
     
                 new_alive = alive and other_alive
 
